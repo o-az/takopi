@@ -345,10 +345,6 @@ class ExecProgressRenderer:
 
         while len(message) > self.max_chars and lines:
             lines.pop(0)
-            if current_reasoning and current_action:
-                lines.append(current_reasoning)
-            if current_action:
-                lines.append(current_action)
             message = self._assemble(header, lines)
 
         return message
