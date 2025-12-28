@@ -10,6 +10,7 @@ import threading
 import time
 import logging
 import sys
+from weakref import WeakValueDictionary
 from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -202,14 +203,16 @@ class CodexExecRunner:
         self.extra_args = extra_args
 
         # per-session locks to prevent concurrent resumes to same session_id
-        self._locks: dict[str, threading.Lock] = {}
+        self._session_locks: WeakValueDictionary[str, threading.Lock] = WeakValueDictionary()
         self._locks_guard = threading.Lock()
 
     def _lock_for(self, session_id: str) -> threading.Lock:
         with self._locks_guard:
-            if session_id not in self._locks:
-                self._locks[session_id] = threading.Lock()
-            return self._locks[session_id]
+            lock = self._session_locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._session_locks[session_id] = lock
+            return lock
 
     def run(
         self,
