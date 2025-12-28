@@ -10,7 +10,9 @@ from typing import Optional
 
 import typer
 
-from .bridge_common import TelegramClient, RouteStore, config_get, load_telegram_config
+from .config import config_get, load_telegram_config
+from .routes import RouteStore
+from .telegram_client import TelegramClient
 
 
 def run(

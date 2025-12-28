@@ -78,7 +78,12 @@ Add `--chat-id` if `chat_id` is not set in `~/.codex/telegram.toml`.
 
 ## Files
 
-- `src/codex_telegram_bridge/bridge_common.py`: shared Telegram client, chunking, and routing store
+- `src/codex_telegram_bridge/bridge_common.py`: compatibility re-exports
+- `src/codex_telegram_bridge/constants.py`: limits and config path constants
+- `src/codex_telegram_bridge/config.py`: config loading and chat-id parsing helpers
+- `src/codex_telegram_bridge/rendering.py`: markdown rendering + chunking
+- `src/codex_telegram_bridge/routes.py`: sqlite routing store
+- `src/codex_telegram_bridge/telegram_client.py`: Telegram Bot API client
 - `src/codex_telegram_bridge/exec_bridge.py`: codex exec + resume bridge
 - `src/codex_telegram_bridge/mcp_bridge.py`: MCP stdio JSON-RPC bridge
 - `src/codex_telegram_bridge/tmux_notify.py`: tmux notifier helper

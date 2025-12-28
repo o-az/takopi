@@ -15,13 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 
-from .bridge_common import (
-    TelegramClient,
-    RouteStore,
-    config_get,
-    load_telegram_config,
-    resolve_chat_ids,
-)
+from .config import config_get, load_telegram_config, resolve_chat_ids
+from .routes import RouteStore
+from .telegram_client import TelegramClient
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 

@@ -11,13 +11,9 @@ from typing import Optional
 
 import typer
 
-from .bridge_common import (
-    TelegramClient,
-    RouteStore,
-    config_get,
-    load_telegram_config,
-    resolve_chat_ids,
-)
+from .config import config_get, load_telegram_config, resolve_chat_ids
+from .routes import RouteStore
+from .telegram_client import TelegramClient
 
 
 def tmux_send_text(target: str, text: str, press_enter: bool = True) -> None:

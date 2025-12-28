@@ -16,15 +16,11 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import typer
 
-from .bridge_common import (
-    TelegramClient,
-    RouteStore,
-    TELEGRAM_HARD_LIMIT,
-    config_get,
-    load_telegram_config,
-    render_markdown,
-    resolve_chat_ids,
-)
+from .config import config_get, load_telegram_config, resolve_chat_ids
+from .constants import TELEGRAM_HARD_LIMIT
+from .rendering import render_markdown
+from .routes import RouteStore
+from .telegram_client import TelegramClient
 
 # -------------------- Codex runner --------------------
 
