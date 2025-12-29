@@ -1,5 +1,6 @@
 [project]
 name = "takopi"
+authors = [{name = "banteg"}]
 version = "0.1.0"
 description = "Telegram bridge tools for Codex."
 readme = "readme.md"
