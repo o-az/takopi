@@ -28,11 +28,14 @@ def format_elapsed(elapsed_s: float) -> str:
     return f"{seconds}s"
 
 
-def format_header(elapsed_s: float, turn: int | None, label: str) -> str:
+def format_header(elapsed_s: float, turn: int | None, item: int | None, label: str) -> str:
     elapsed = format_elapsed(elapsed_s)
+    parts = [label, elapsed]
     if turn is not None:
-        return f"{label}{HEADER_SEP}{elapsed}{HEADER_SEP}turn {turn}"
-    return f"{label}{HEADER_SEP}{elapsed}"
+        parts.append(f"turn {turn}")
+    if item is not None:
+        parts.append(f"item {item}")
+    return HEADER_SEP.join(parts)
 
 
 def is_command_log_line(line: str) -> bool:
@@ -60,10 +63,10 @@ def _shorten_path(path: str, width: int) -> str:
 
 def format_event(
     event: dict[str, Any],
-    last_turn: int | None,
+    last_item: int | None,
 ) -> tuple[int | None, list[str], str | None, str | None]:
     """
-    Returns (new_last_turn, cli_lines, progress_line, progress_prefix).
+    Returns (new_last_item, cli_lines, progress_line, progress_prefix).
     progress_prefix is only set when progress_line is set, and is used for
     replacing a preceding "running" line on completion.
     """
@@ -71,51 +74,51 @@ def format_event(
 
     match event["type"]:
         case "thread.started":
-            return last_turn, ["thread started"], None, None
+            return last_item, ["thread started"], None, None
         case "turn.started":
-            return last_turn, ["turn started"], None, None
+            return last_item, ["turn started"], None, None
         case "turn.completed":
-            return last_turn, ["turn completed"], None, None
+            return last_item, ["turn completed"], None, None
         case "turn.failed":
-            return last_turn, [f"turn failed: {event['error']['message']}"], None, None
+            return last_item, [f"turn failed: {event['error']['message']}"], None, None
         case "error":
-            return last_turn, [f"stream error: {event['message']}"], None, None
+            return last_item, [f"stream error: {event['message']}"], None, None
         case "item.started" | "item.updated" | "item.completed" as etype:
             item = event["item"]
-            item_num = extract_numeric_id(item["id"], last_turn)
-            last_turn = item_num if item_num is not None else last_turn
+            item_num = extract_numeric_id(item["id"], last_item)
+            last_item = item_num if item_num is not None else last_item
             prefix = f"[{item_num if item_num is not None else '?'}] "
 
             match (item["type"], etype):
                 case ("agent_message", "item.completed"):
                     lines.append("assistant:")
                     lines.extend(indent(item["text"], "  ").splitlines())
-                    return last_turn, lines, None, None
+                    return last_item, lines, None, None
                 case ("reasoning", "item.completed"):
                     line = prefix + item["text"]
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("command_execution", "item.started"):
                     command = f"`{_shorten(item['command'], MAX_CMD_LEN)}`"
                     line = prefix + f"{STATUS_RUNNING} running: {command}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("command_execution", "item.completed"):
                     command = f"`{_shorten(item['command'], MAX_CMD_LEN)}`"
                     exit_code = item["exit_code"]
                     exit_part = f" (exit {exit_code})" if exit_code is not None else ""
                     line = prefix + f"{STATUS_DONE} ran: {command}{exit_part}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("mcp_tool_call", "item.started"):
                     name = ".".join(part for part in (item["server"], item["tool"]) if part) or "tool"
                     line = prefix + f"{STATUS_RUNNING} tool: {name}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("mcp_tool_call", "item.completed"):
                     name = ".".join(part for part in (item["server"], item["tool"]) if part) or "tool"
                     line = prefix + f"{STATUS_DONE} tool: {name}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("web_search", "item.completed"):
                     query = _shorten(item["query"], MAX_QUERY_LEN)
                     line = prefix + f"{STATUS_DONE} searched: {query}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("file_change", "item.completed"):
                     paths = [change["path"] for change in item["changes"] if change.get("path")]
                     if not paths:
@@ -126,20 +129,22 @@ def format_event(
                     else:
                         desc = f"updated {len(paths)} files"
                     line = prefix + f"{STATUS_DONE} {desc}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case ("error", "item.completed"):
                     warning = _shorten(item["message"], 120)
                     line = prefix + f"{STATUS_DONE} warning: {warning}"
-                    return last_turn, [line], line, prefix
+                    return last_item, [line], line, prefix
                 case _:
-                    return last_turn, [], None, None
+                    return last_item, [], None, None
         case _:
-            return last_turn, [], None, None
+            return last_item, [], None, None
 
 
-def render_event_cli(event: dict[str, Any], last_turn: int | None = None) -> tuple[int | None, list[str]]:
-    last_turn, cli_lines, _, _ = format_event(event, last_turn)
-    return last_turn, cli_lines
+def render_event_cli(
+    event: dict[str, Any], last_item: int | None = None
+) -> tuple[int | None, list[str]]:
+    last_item, cli_lines, _, _ = format_event(event, last_item)
+    return last_item, cli_lines
 
 
 class ExecProgressRenderer:
@@ -147,13 +152,17 @@ class ExecProgressRenderer:
         self.max_actions = max_actions
         self.max_chars = max_chars
         self.recent_actions: deque[str] = deque(maxlen=max_actions)
-        self.last_turn: int | None = None
+        self.turn_count: int | None = None
+        self.last_item: int | None = None
 
     def note_event(self, event: dict[str, Any]) -> bool:
-        if event["type"] in {"thread.started", "turn.started"}:
+        if event["type"] == "thread.started":
+            return True
+        if event["type"] == "turn.started":
+            self.turn_count = 1 if self.turn_count is None else self.turn_count + 1
             return True
 
-        self.last_turn, _, progress_line, progress_prefix = format_event(event, self.last_turn)
+        self.last_item, _, progress_line, progress_prefix = format_event(event, self.last_item)
         if progress_line is None:
             return False
 
@@ -167,12 +176,12 @@ class ExecProgressRenderer:
         return True
 
     def render_progress(self, elapsed_s: float) -> str:
-        header = format_header(elapsed_s, self.last_turn, label="working")
+        header = format_header(elapsed_s, self.turn_count, self.last_item, label="working")
         message = self._assemble(header, list(self.recent_actions))
         return message if len(message) <= self.max_chars else header
 
     def render_final(self, elapsed_s: float, answer: str, status: str = "done") -> str:
-        header = format_header(elapsed_s, self.last_turn, label=status)
+        header = format_header(elapsed_s, self.turn_count, self.last_item, label=status)
         lines = list(self.recent_actions)
         if status == "done":
             lines = [line for line in lines if not is_command_log_line(line)]

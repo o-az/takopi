@@ -45,11 +45,11 @@ def test_progress_renderer_renders_progress_and_final() -> None:
         r.note_event(evt)
 
     progress = r.render_progress(3.0)
-    assert progress.startswith("working · 3s · turn 3")
+    assert progress.startswith("working · 3s · turn 1 · item 3")
     assert "[1] ✓ ran: `bash -lc ls` (exit 0)" in progress
 
     final = r.render_final(3.0, "answer", status="done")
-    assert final.startswith("done · 3s · turn 3")
+    assert final.startswith("done · 3s · turn 1 · item 3")
     assert "running:" not in final
     assert "ran:" not in final
     assert final.endswith("answer")
