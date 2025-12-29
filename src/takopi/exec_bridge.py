@@ -376,7 +376,7 @@ def _parse_bridge_config(
             "  brew install codex"
         )
 
-    startup_msg = f"codex exec bridge has started\npwd: {startup_pwd}"
+    startup_msg = f"🐙 takopi is ready to help-pi!\npwd: {startup_pwd}"
     extra_args = ["-c", "notify=[]"]
     if profile:
         extra_args.extend(["--profile", profile])
