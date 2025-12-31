@@ -101,7 +101,7 @@ async def _send_resume_warning(
     )
 
 
-PROGRESS_EDIT_EVERY_S = 1.0
+PROGRESS_EDIT_EVERY_S = 2.0
 
 
 async def _send_or_edit_markdown(

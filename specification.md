@@ -362,7 +362,7 @@ The bridge MUST NOT:
 ### 7.2 Progress behavior
 
 - The bridge SHOULD send an initial progress message quickly (“running…”).
-- The bridge MUST edit the progress message no more frequently than `progress_edit_every` (configurable).
+- The bridge SHOULD edit the progress message no more frequently than every 2 seconds.
 - The bridge SHOULD avoid edits if rendered content has not changed.
 
 ### 7.3 Resume line inclusion

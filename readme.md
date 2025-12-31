@@ -88,7 +88,7 @@ Send any message to your bot. The bridge will:
 
 1. Send a silent progress message
 2. Stream events from `codex exec`
-3. Update progress every ~1 second
+3. Update progress every 2 seconds
 4. Send final response with a resume token line
 
 ### Resume a Session
