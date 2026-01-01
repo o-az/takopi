@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, cast
 from weakref import WeakValueDictionary
 
 import anyio
+from ..backends import EngineBackend, EngineConfig, SetupIssue
+from ..backends_helpers import which_issue
+from ..config import ConfigError
 from ..model import (
     Action,
     ActionEvent,
@@ -660,3 +665,62 @@ class CodexRunner(SessionLockMixin, ResumeTokenMixin, Runner):
         finally:
             if session_lock is not None and session_lock_acquired:
                 session_lock.release()
+
+
+_INSTALL_ISSUE = SetupIssue(
+    "Install the Codex CLI",
+    ("   [dim]$[/] npm install -g @openai/codex",),
+)
+
+check_setup = which_issue("codex", _INSTALL_ISSUE)
+
+
+def build_runner(config: EngineConfig, config_path: Path) -> Runner:
+    codex_cmd = shutil.which("codex")
+    if not codex_cmd:
+        raise ConfigError(
+            "codex not found on PATH. Install the Codex CLI with:\n"
+            "  npm install -g @openai/codex\n"
+            "  # or on macOS\n"
+            "  brew install codex"
+        )
+
+    extra_args_value = config.get("extra_args")
+    if extra_args_value is None:
+        extra_args = ["-c", "notify=[]"]
+    elif isinstance(extra_args_value, list) and all(
+        isinstance(item, str) for item in extra_args_value
+    ):
+        extra_args = list(extra_args_value)
+    else:
+        raise ConfigError(
+            f"Invalid `codex.extra_args` in {config_path}; expected a list of strings."
+        )
+
+    title = "Codex"
+    profile_value = config.get("profile")
+    if profile_value:
+        if not isinstance(profile_value, str):
+            raise ConfigError(
+                f"Invalid `codex.profile` in {config_path}; expected a string."
+            )
+        extra_args.extend(["--profile", profile_value])
+        title = profile_value
+
+    return CodexRunner(codex_cmd=codex_cmd, extra_args=extra_args, title=title)
+
+
+def startup_message(cwd: str) -> str:
+    return f"codex is ready\npwd: {cwd}"
+
+
+BACKEND = EngineBackend(
+    id="codex",
+    display_name="Codex",
+    check_setup=check_setup,
+    build_runner=build_runner,
+    startup_message=startup_message,
+    install_issue=_INSTALL_ISSUE,
+    cli_help="Run with the Codex engine.",
+    description="use codex",
+)

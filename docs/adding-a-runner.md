@@ -8,10 +8,8 @@ domain model. Use the existing runners (Codex/Claude) as references.
 1. Implement `Runner` in `src/takopi/runners/<engine>.py`.
 2. Emit Takopi events from `takopi.model` and implement resume helpers
    (`format_resume`, `extract_resume`, `is_resume_line`).
-3. Register an `EngineBackend` in `src/takopi/engines.py` with setup checks
-   and runner construction.
-4. Add CLI subcommand in `src/takopi/cli.py`.
-5. Extend tests (runner contract + engine-specific translation tests).
+3. Define `BACKEND = EngineBackend(...)` in the runner module (auto-discovered).
+4. Extend tests (runner contract + engine-specific translation tests).
 
 ---
 
@@ -94,13 +92,27 @@ Mapping guidance:
 If Pi emits warnings/errors before the final event, surface them as completed
 `ActionEvent`s (e.g., `kind="warning"`).
 
-### 4) Register engine in `src/takopi/engines.py`
+### 4) Expose the backend (auto-discovered)
 
-Add:
+Takopi discovers runners by importing modules in `takopi.runners` and looking
+for a module-level `BACKEND: EngineBackend` (from `takopi.backends`).
 
-- `_pi_check_setup()` that verifies `pi` exists on PATH
-- `_pi_build_runner()` that reads `[pi]` config and returns `PiRunner`
-- A new `EngineBackend(id="pi", display_name="Pi", ...)` entry
+At the bottom of `src/takopi/runners/pi.py`, define:
+
+```py
+BACKEND = EngineBackend(
+    id="pi",
+    display_name="Pi",
+    check_setup=check_setup,
+    build_runner=build_runner,
+    startup_message=startup_message,
+)
+```
+
+No changes to `engines.py` or `cli.py` are required.
+
+Only modules that define `BACKEND` are treated as engines. Internal/testing
+modules (like `mock.py`) should omit it.
 
 Example config (minimal):
 
@@ -110,12 +122,7 @@ model = "pi-large"
 allowed_tools = ["Bash", "Read"]
 ```
 
-### 5) Add CLI subcommand
-
-Expose `takopi pi` alongside `takopi codex` / `takopi claude` by adding a new
-`@app.command()` in `src/takopi/cli.py`.
-
-### 6) Tests + fixtures
+### 5) Tests + fixtures
 
 - Add `tests/test_pi_runner.py` for translation behavior.
 - Reuse `tests/test_runner_contract.py` to ensure lock/resume invariants.

@@ -7,8 +7,8 @@ from typing import Sequence
 from rich.console import Console
 from rich.panel import Panel
 
+from .backends import EngineBackend, SetupIssue
 from .config import ConfigError, HOME_CONFIG_PATH, load_telegram_config
-from .engines import EngineBackend, SetupIssue
 
 _OCTOPUS = "\N{OCTOPUS}"
 
@@ -113,10 +113,7 @@ def render_engine_choice(backends: Sequence[EngineBackend]) -> None:
     parts.append("")
     for idx, backend in enumerate(backends, start=1):
         parts.append(f"[bold yellow]{idx}.[/] [dim]$[/] takopi {backend.id}")
-        if backend.id == "claude":
-            description = "use claude code"
-        else:
-            description = f"use {backend.display_name.lower()}"
+        description = backend.description or f"use {backend.display_name.lower()}"
         parts.append(f"   [dim]{description}[/]")
         parts.append("")
 

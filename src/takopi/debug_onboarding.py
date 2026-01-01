@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import typer
 
+from .backends import SetupIssue
 from .config import ConfigError
-from .engines import SetupIssue, get_backend, get_install_issue, list_backend_ids
+from .engines import get_backend, list_backend_ids
 from .onboarding import SetupResult, check_setup, config_issue, render_setup_guide
 
 
@@ -37,8 +38,12 @@ def run(
         raise typer.Exit(code=1)
     setup = check_setup(backend)
     if force:
+        install_issue = backend.install_issue or SetupIssue(
+            f"Install {backend.display_name}",
+            ("   [dim]See engine setup docs for install instructions.[/]",),
+        )
         forced_issues = [
-            get_install_issue(backend.id),
+            install_issue,
             config_issue(setup.config_path),
         ]
         setup = SetupResult(

@@ -94,14 +94,16 @@ Notes:
 
 ## Code changes (by file)
 
-### 1) `src/takopi/engines.py`
+### 1) `src/takopi/runners/claude.py` (backend export)
 
-Add a new backend:
+Expose a module-level `BACKEND = EngineBackend(...)` (from `takopi.backends`).
+Takopi auto-discovers runners by importing `takopi.runners.*` and looking for
+`BACKEND`.
 
-* Engine ID: `EngineId("claude")`
+`BACKEND` should provide:
 
-* `check_setup()` should:
-
+* Engine id: `"claude"`
+* `check_setup()`:
   * `shutil.which("claude")` must exist.
   * Error message should include official install options and “run `claude` once to authenticate”.
 
@@ -109,12 +111,9 @@ Add a new backend:
     * Agent SDK / CLI can use Claude Code authentication from running `claude`, or API key auth. ([Claude][5])
 
 * `build_runner()` should parse `[claude]` config and instantiate `ClaudeRunner`.
+* `startup_message()` e.g.: `claude is ready\npwd: ...`
 
-* `startup_message()` e.g.:
-
-  * `takopi (claude) is ready\npwd: ...`
-
-### 2) New file: `src/takopi/runners/claude.py`
+### 2) New file: `src/takopi/runners/claude.py` (runner implementation)
 
 Implement a new `Runner`:
 
@@ -367,7 +366,7 @@ Mirror the existing `CodexRunner` tests patterns.
 
 ## Implementation checklist
 
-* [ ] Add `ClaudeBackend` in `src/takopi/engines.py` and register in `ENGINES`.
+* [ ] Export `BACKEND = EngineBackend(...)` from `src/takopi/runners/claude.py`.
 * [ ] Add `src/takopi/runners/claude.py` implementing the `Runner` protocol.
 * [ ] Add tests + stub executable fixtures.
 * [ ] Update README and developing docs.

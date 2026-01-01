@@ -7,11 +7,14 @@ import subprocess
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 from weakref import WeakValueDictionary
 
 import anyio
 
+from ..backends import EngineBackend, EngineConfig, SetupIssue
+from ..backends_helpers import which_issue
 from ..model import (
     Action,
     ActionEvent,
@@ -611,3 +614,46 @@ class ClaudeRunner(SessionLockMixin, ResumeTokenMixin, Runner):
         finally:
             if session_lock is not None and session_lock_acquired:
                 session_lock.release()
+
+
+_INSTALL_ISSUE = SetupIssue(
+    "Install the Claude Code CLI",
+    ("   [dim]$[/] npm install -g @anthropic-ai/claude-code",),
+)
+
+check_setup = which_issue("claude", _INSTALL_ISSUE)
+
+
+def build_runner(config: EngineConfig, _config_path: Path) -> Runner:
+    claude_cmd = "claude"
+
+    model = config.get("model")
+    allowed_tools = config.get("allowed_tools")
+    dangerously_skip_permissions = config.get("dangerously_skip_permissions") is True
+    use_api_billing = config.get("use_api_billing") is True
+    title = str(model) if model is not None else "claude"
+
+    return ClaudeRunner(
+        claude_cmd=claude_cmd,
+        model=model,
+        allowed_tools=allowed_tools,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+        use_api_billing=use_api_billing,
+        session_title=title,
+    )
+
+
+def startup_message(cwd: str) -> str:
+    return f"claude is ready\npwd: {cwd}"
+
+
+BACKEND = EngineBackend(
+    id="claude",
+    display_name="Claude",
+    check_setup=check_setup,
+    build_runner=build_runner,
+    startup_message=startup_message,
+    install_issue=_INSTALL_ISSUE,
+    cli_help="Run with the Claude engine.",
+    description="use claude code",
+)

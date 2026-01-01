@@ -6,9 +6,10 @@ import anyio
 import typer
 
 from . import __version__
+from .backends import EngineBackend
 from .bridge import BridgeConfig, _run_main_loop
 from .config import ConfigError, load_telegram_config
-from .engines import EngineBackend, get_backend, get_engine_config, list_backends
+from .engines import get_backend, get_engine_config, list_backends
 from .logging import setup_logging
 from .onboarding import check_setup, render_engine_choice, render_setup_guide
 from .telegram import TelegramClient
@@ -111,36 +112,31 @@ def app_main(
         raise typer.Exit(code=1)
 
 
-@app.command(help="Run with the Codex engine.")
-def codex(
-    final_notify: bool = typer.Option(
-        True,
-        "--final-notify/--no-final-notify",
-        help="Send the final response as a new message (not an edit).",
-    ),
-    debug: bool = typer.Option(
-        False,
-        "--debug/--no-debug",
-        help="Log engine JSONL, Telegram requests, and rendered messages.",
-    ),
-) -> None:
-    _run_engine(engine="codex", final_notify=final_notify, debug=debug)
+def _register_engine_commands() -> None:
+    for backend in list_backends():
+        help_text = backend.cli_help or f"Run with the {backend.display_name} engine."
+
+        def _cmd(
+            final_notify: bool = typer.Option(
+                True,
+                "--final-notify/--no-final-notify",
+                help="Send the final response as a new message (not an edit).",
+            ),
+            debug: bool = typer.Option(
+                False,
+                "--debug/--no-debug",
+                help="Log engine JSONL, Telegram requests, and rendered messages.",
+            ),
+            *,
+            _engine_id: str = backend.id,
+        ) -> None:
+            _run_engine(engine=_engine_id, final_notify=final_notify, debug=debug)
+
+        _cmd.__name__ = f"run_{backend.id}"
+        app.command(name=backend.id, help=help_text)(_cmd)
 
 
-@app.command(help="Run with the Claude engine.")
-def claude(
-    final_notify: bool = typer.Option(
-        True,
-        "--final-notify/--no-final-notify",
-        help="Send the final response as a new message (not an edit).",
-    ),
-    debug: bool = typer.Option(
-        False,
-        "--debug/--no-debug",
-        help="Log engine JSONL, Telegram requests, and rendered messages.",
-    ),
-) -> None:
-    _run_engine(engine="claude", final_notify=final_notify, debug=debug)
+_register_engine_commands()
 
 
 def main() -> None:
