@@ -44,8 +44,8 @@ Notes:
 `claude --resume <session_id>`
 ```
 
-Runner must implement its own regex (cannot use `compile_resume_pattern` because
-that only matches `<engine> resume <token>`). Suggested regex:
+Runner must implement its own regex because the resume format is
+`claude --resume <session_id>`. Suggested regex:
 
 ```
 (?im)^\s*`?claude\s+(?:--resume|-r)\s+(?P<token>[^`\s]+)`?\s*$

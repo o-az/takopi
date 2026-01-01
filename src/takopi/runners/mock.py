@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
@@ -15,7 +16,7 @@ from ..model import (
     StartedEvent,
     TakopiEvent,
 )
-from ..runner import ResumeTokenMixin, Runner, SessionLockMixin, compile_resume_pattern
+from ..runner import ResumeTokenMixin, Runner, SessionLockMixin
 
 ENGINE: EngineId = EngineId("mock")
 
@@ -75,7 +76,10 @@ class MockRunner(SessionLockMixin, ResumeTokenMixin, Runner):
         self._answer = answer
         self._resume_value = resume_value
         self.title = title or str(engine).title()
-        self.resume_re = compile_resume_pattern(engine)
+        engine_name = re.escape(str(engine))
+        self.resume_re = re.compile(
+            rf"(?im)^\s*`?{engine_name}\s+resume\s+(?P<token>[^`\s]+)`?\s*$"
+        )
 
     async def run(
         self, prompt: str, resume: ResumeToken | None

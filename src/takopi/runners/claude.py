@@ -18,7 +18,7 @@ from ..model import (
     StartedEvent,
     TakopiEvent,
 )
-from ..runner import JsonlSubprocessRunner, Runner
+from ..runner import JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from ..utils.paths import relativize_command, relativize_path
 
 logger = logging.getLogger(__name__)
@@ -397,7 +397,7 @@ def translate_claude_event(
 
 
 @dataclass
-class ClaudeRunner(JsonlSubprocessRunner):
+class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     engine: EngineId = ENGINE
     resume_re: re.Pattern[str] = _RESUME_RE
 

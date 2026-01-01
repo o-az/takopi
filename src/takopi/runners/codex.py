@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -19,7 +20,7 @@ from ..model import (
     StartedEvent,
     TakopiEvent,
 )
-from ..runner import JsonlSubprocessRunner, Runner, compile_resume_pattern
+from ..runner import JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from ..utils.paths import relativize_command
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ _ACTION_KIND_MAP: dict[str, ActionKind] = {
     "todo_list": "note",
 }
 
-_RESUME_RE = compile_resume_pattern(ENGINE)
+_RESUME_RE = re.compile(r"(?im)^\s*`?codex\s+resume\s+(?P<token>[^`\s]+)`?\s*$")
 
 
 def _started_event(token: ResumeToken, *, title: str) -> StartedEvent:
@@ -387,7 +388,7 @@ class CodexRunState:
     turn_index: int = 0
 
 
-class CodexRunner(JsonlSubprocessRunner):
+class CodexRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     engine: EngineId = ENGINE
     resume_re = _RESUME_RE
     stderr_tail_lines = STDERR_TAIL_LINES

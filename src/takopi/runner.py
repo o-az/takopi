@@ -26,11 +26,6 @@ from .utils.streams import drain_stderr, iter_jsonl
 from .utils.subprocess import manage_subprocess
 
 
-def compile_resume_pattern(engine: EngineId) -> re.Pattern[str]:
-    name = re.escape(str(engine))
-    return re.compile(rf"(?im)^\s*`?{name}\s+resume\s+(?P<token>[^`\s]+)`?\s*$")
-
-
 class ResumeTokenMixin:
     engine: EngineId
     resume_re: re.Pattern[str]
@@ -93,28 +88,12 @@ class SessionLockMixin:
                 yield evt
 
 
-class BaseRunner(SessionLockMixin, ResumeTokenMixin):
+class BaseRunner(SessionLockMixin):
     engine: EngineId
-
-    def ensure_resume_re(self) -> re.Pattern[str]:
-        resume_re = getattr(self, "resume_re", None)
-        if resume_re is None:
-            resume_re = compile_resume_pattern(self.engine)
-            self.resume_re = resume_re
-        return resume_re
-
-    def is_resume_line(self, line: str) -> bool:
-        self.ensure_resume_re()
-        return super().is_resume_line(line)
-
-    def extract_resume(self, text: str | None) -> ResumeToken | None:
-        self.ensure_resume_re()
-        return super().extract_resume(text)
 
     async def run(
         self, prompt: str, resume: ResumeToken | None
     ) -> AsyncIterator[TakopiEvent]:
-        self.ensure_resume_re()
         async for evt in self.run_locked(prompt, resume):
             yield evt
 
