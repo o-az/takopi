@@ -1,279 +1,190 @@
-# Takopi Specification v0.2.0 [2025-12-31]
+# Takopi Specification v0.2.0 (minimal) [2025-12-31]
 
-This document specifies Takopi v0.2.0 behavior and architecture in a way that is testable, evolvable, and explicitly aligned with the goals:
+This document is **normative**. The words **MUST**, **SHOULD**, and **MAY** express requirements.
 
-- **Better testability**
-- **Runner abstraction** to support future runners (e.g., Claude Code)
-- **Telegram remains the only bot client** (adding another is unlikely)
-- **Parallel runs are allowed across different threads**, but runs for the **same thread must be serialized** to avoid corrupting history
+## 1. Scope
 
-This is a normative spec using **MUST / SHOULD / MAY** language. Sections labeled **Decision** capture choices that should remain stable unless intentionally changed.
+Takopi v0.2.0 specifies:
 
-------
+- A **Telegram** bot bridge that runs an agent **Runner** and posts:
+  - a throttled, edited **progress message**
+  - a **final message** with the final answer and a resume line
+- **Thread continuation** via a **resume command** embedded in chat messages
+- **Parallel runs across different threads**
+- **Serialization within a thread** (no concurrent runs on the same thread)
+- A Takopi-owned **normalized event model** produced by runners and consumed by renderers/bridge
 
-## 1. Scope and goals
+Out of scope for v0.2.0:
 
-### 1.1 Goals (v0.2.0)
-
-1. Provide a Telegram bot that runs an “exec agent” (runner) and streams progress updates with periodic edits.
-2. Support “thread continuation” via a **resume command** embedded in chat messages.
-3. Support **parallel execution across different threads** (different resume tokens).
-4. Enforce **serialization per thread** (same resume token) to avoid concurrent mutation of the same engine conversation/history.
-5. Establish a stable, Takopi-owned **normalized event model** that runners produce and renderers consume.
-6. Keep architecture modular enough to add another runner in a future version with minimal changes.
-
-### 1.2 Non-goals (v0.2.0)
-
-- Adding additional bot clients besides Telegram (Discord/Slack/etc.) is out of scope.
-- Implementing auto-selection of multiple runners is not required (but should be prepared for).
-- Streaming partial assistant answers token-by-token is not required (progress UI is event-driven; final answer is delivered at completion).
-- Supporting engines that cannot provide stable action IDs is out of scope (see §5.4).
-
-------
+- Non-Telegram clients (Slack/Discord/etc.)
+- Auto-selecting among multiple runners
+- Token-by-token streaming of the assistant’s final answer
+- Engines/runners that cannot provide **stable action IDs** within a run
 
 ## 2. Terminology
 
-- **Runner / Engine**: Implementation that executes an agent process (Codex today; Claude Code later) and produces Takopi events.
-- **Thread**: The engine-side conversation identifier. In Takopi this is represented as a **ResumeToken**.
-- **ResumeToken**: A Takopi-owned structured identifier: `{ engine: EngineId, value: str }`.
-- **ResumeLine**: A runner-owned string representation embedded in chat; **canonical** representation is the engine CLI command (Decision §4.1).
-- **Takopi Event**: A normalized event dict emitted by a runner and consumed by renderers/bridge.
-- **Progress Message**: Telegram message that is edited periodically to show live status.
-- **Final Message**: Telegram message containing final answer + resume line + status.
+- **EngineId**: string identifier of an engine (e.g., `"codex"`).
+- **Runner**: Takopi adapter that executes an engine process and yields **Takopi events**.
+- **Thread**: a single engine-side conversation, identified in Takopi by a **ResumeToken**.
+- **ResumeToken**: Takopi-owned thread identifier `{ engine: EngineId, value: str }`.
+- **ResumeLine**: a runner-owned string embedded in chat that represents a ResumeToken.
+- **Run**: a single invocation of `Runner.run(prompt, resume)`.
+- **TakopiEvent**: a normalized event emitted by a runner and consumed by renderers/bridge.
+- **Progress message**: a Telegram message that is periodically edited during a run.
+- **Final message**: a Telegram message that includes run status, final answer, and resume line.
 
-------
+## 3. Resume tokens and resume lines
 
-## 3. Architecture overview
+### 3.1 Decision: canonical resume line is the engine CLI resume command
 
-### 3.1 Layers and responsibilities (strict boundaries)
+The canonical ResumeLine embedded in chat MUST be the engine’s CLI resume command, e.g.:
 
-**Domain Model (Takopi-owned)**
+- `codex resume <id>`
+- `claude --resume <id>`
 
-- Defines: `ResumeToken`, `TakopiEvent`, `Action` (including the terminal `completed` event).
-- No Telegram, no subprocess, no engine JSON.
+Takopi MUST treat the runner as authoritative for:
 
-**Runner Interface (Takopi-owned)**
+- formatting a ResumeToken into a ResumeLine
+- extracting a ResumeToken from message text
 
-- Defines `Runner` protocol: `run()`, `extract_resume()`, `format_resume()`, etc.
-- Runners are trusted producers of Takopi events (Decision §5.2).
-
-**Runner Implementations (engine-owned logic)**
-
-- Codex runner translates engine-specific stream into Takopi events.
-- Each runner enforces per-thread serialization (MUST, §6.2).
-
-**Renderers (Takopi-owned)**
-
-- Pure functions/state machines that consume Takopi events and produce markdown strings.
-- No engine-specific parsing.
-- No Telegram API calls.
-
-**Bridge (Telegram orchestration)**
-
-- Receives Telegram updates and turns them into runner invocations.
-- Maintains throttled progress editing.
-- Handles cancellation `/cancel`.
-- Owns Telegram markdown constraints (limits, entity formatting).
-
-### 3.2 Module naming and one-word modules (v0.2.0 refactor target)
-
-Recommended module layout (single-word filenames, clean layering):
-
-- `takopi/model.py`
-  Domain types: events, actions, resume token.
-- `takopi/runner.py`
-  Runner protocol.
-- `takopi/runners/codex.py`
-  Codex runner implementation.
-- `takopi/runners/mock.py`
-  Script/mock runner for tests.
-- `takopi/render.py`
-  Progress renderer and event-to-text formatting.
-- `takopi/bridge.py`
-  Telegram orchestration; main loop and message handler.
-- `takopi/cli.py`
-  Typer/CLI entrypoints, config loading, engine selection.
-- `takopi/markdown.py`
-  Markdown sanitization + Telegram entity prep.
-
-**Rationale:**
-The normalized event model MUST NOT live under `runners/` because it is core domain state shared by bridge and renderer.
-
-------
-
-## 4. Resume tokens and resume lines
-
-### 4.1 Decision: canonical resume representation is engine CLI command
-
-The canonical representation of “resume” embedded in chat is the runner’s **engine CLI resume command**, e.g.:
-
-- Codex: ``codex resume <uuid>``
-- Claude Code: ``claude --resume <uuid>``
-
-Takopi MUST treat the runner as the authority for:
-
-- formatting a `ResumeToken` into a `ResumeLine`
-- extracting a `ResumeToken` from message text
-
-Takopi MAY introduce additional Takopi-owned metadata lines in the future (e.g., `resume: codex:<uuid>`), but **v0.2.0 canonical remains the CLI command**.
-
-### 4.2 ResumeToken structure (Takopi-owned)
+### 3.2 ResumeToken schema (Takopi-owned)
 
 ```python
 @dataclass(frozen=True, slots=True)
 class ResumeToken:
-    engine: str   # EngineId (string)
+    engine: str  # EngineId
     value: str
 ```
 
-### 4.3 Runner resume codec interface (MUST)
+### 3.3 Runner resume codec (MUST)
 
 Each runner MUST implement:
 
-- `format_resume(token: ResumeToken) -> str`
-  Returns a ResumeLine suitable for embedding in Telegram markdown (usually inside backticks).
-- `extract_resume(text: str) -> ResumeToken | None`
-  Extracts a ResumeToken from arbitrary message text.
-- `is_resume_line(line: str) -> bool`
-  Fast check used for truncation safety (to preserve the resume line during trimming).
+* `format_resume(token: ResumeToken) -> str`
+* `extract_resume(text: str) -> ResumeToken | None`
+* `is_resume_line(line: str) -> bool`
 
-**Constraints:**
+Constraints:
 
-- `format_resume()` MUST raise or otherwise fail if `token.engine != runner.engine`.
-- `extract_resume()` MUST return `None` if it cannot confidently parse a resume command for its engine.
+* `format_resume()` MUST fail if `token.engine != runner.engine`.
+* `extract_resume()` MUST return `None` if it cannot **confidently** parse a resume line for its engine.
 
-### 4.4 Resume extraction behavior in the bridge (v0.2.0)
+### 3.4 Bridge resume resolution (MUST)
 
-Given a user message `text` and optional reply-to message `reply_text`:
+Given `text` (user message) and optional `reply_text` (the message being replied to):
 
 1. The bridge MUST attempt `runner.extract_resume(text)`.
-2. If not found, the bridge MUST attempt `runner.extract_resume(reply_text)` if present.
-3. If still not found, run starts as a **new thread** (`resume=None`).
+2. If not found, it MUST attempt `runner.extract_resume(reply_text)` if present.
+3. If still not found, the run MUST start with `resume=None` (new thread).
 
-**Future note (non-normative):**
-For multi-runner auto-selection, the bridge MAY attempt extraction across all registered runners. This is not required for v0.2.0.
+## 4. Normalized event model
 
-------
+### 4.1 Decision: events are trusted after normalization
 
-## 5. Normalized event model (Takopi-owned)
+Runners are responsible for emitting well-formed Takopi events. Consumers (renderer/bridge) SHOULD assume validity and MAY fail fast on invariant violations.
 
-### 5.1 Decision: events are trusted after normalization
+### 4.2 Supported event types (minimum set)
 
-Runners are responsible for producing well-formed Takopi events. Downstream consumers (render/bridge) SHOULD assume validity and may fail fast if invariants are violated (Decision §5.2).
+Takopi MUST support:
 
-### 5.2 Event types (minimum set)
+* `started`
+* `action`
+* `completed`
 
-Takopi MUST support the following event types:
+Minimal runner mode is supported:
 
-1. `started`
-2. `action`
-3. `completed`
+* A runner MAY emit only `started` and `completed`.
+* If `action` events are emitted, `phase="completed"` alone is valid (no requirement to emit `started`/`updated` phases).
 
-**Minimal runner mode (supported):**
+### 4.3 Event schemas
 
-Runners MAY emit only:
+All events MUST include `engine: EngineId` and `type`.
 
-- exactly one `started`
-- exactly one `completed`
-
-`action` events are optional. If emitted, a runner MAY emit only
-`phase="completed"` action events (no requirement to emit `started` / `updated`
-phases or track pending action state).
-
-### 5.3 Required fields by event type
-
-#### 5.3.1 `started`
+#### 4.3.1 `started`
 
 Required:
 
-- `type: "started"`
-- `engine: EngineId`
-- `resume: ResumeToken`
+* `type: "started"`
+* `engine: EngineId`
+* `resume: ResumeToken`
 
 Optional:
 
-- `title: str` (human-readable session/agent label)
-- `meta: dict` (debug/diagnostic payloads)
+* `title: str`
+* `meta: dict`
 
-#### 5.3.2 `action`
+#### 4.3.2 `action`
 
 Required:
 
-- `type: "action"`
-- `engine: EngineId`
-- `action: Action`
-- `phase: "started" | "updated" | "completed"`
+* `type: "action"`
+* `engine: EngineId`
+* `action: Action`
+* `phase: "started" | "updated" | "completed"`
 
 Optional:
 
-- `ok: bool` (typically present when `phase="completed"`)
-- `message: str` (freeform status/warning text)
-- `level: "debug" | "info" | "warning" | "error"`
+* `ok: bool` (typically on `phase="completed"`)
+* `message: str`
+* `level: "debug" | "info" | "warning" | "error"`
 
 Notes:
 
-- `phase="completed"` alone is valid; `started` / `updated` are optional.
+* `phase="completed"` alone is valid.
 
-#### 5.3.3 `completed`
+#### 4.3.3 `completed`
 
 Required:
 
-- `type: "completed"`
-- `engine: EngineId`
-- `ok: bool` (success/failure of the run)
-- `answer: str` (final assistant response text; may be empty)
+* `type: "completed"`
+* `engine: EngineId`
+* `ok: bool`          (overall run success/failure)
+* `answer: str`       (final assistant answer; MAY be empty)
 
 Optional:
 
-- `resume: ResumeToken` (final resume token for the run; new or existing, if known)
-- `error: str | None` (fatal error message, if any)
-- `usage: dict` (engine usage/telemetry, if provided)
+* `resume: ResumeToken`   (final token; new or existing, if known)
+* `error: str | None`     (fatal error message, if any)
+* `usage: dict`           (telemetry/usage if available)
 
-### 5.4 Action schema (MUST, per your Decision #4)
+### 4.4 Action schema (MUST; stable IDs)
 
-Actions MUST have stable IDs.
+Actions MUST have stable IDs within a run:
 
 ```python
 @dataclass(frozen=True, slots=True)
 class Action:
-    id: str                 # required
-    kind: str               # required, stable taxonomy
-    title: str              # required, short label
-    detail: dict[str, Any]  # required, structured details
+    id: str
+    kind: str
+    title: str
+    detail: dict[str, Any]
 ```
 
-**Definition (v0.2.0):**
-“Stable” means **stable within a single run**: the same underlying action MUST keep the same `Action.id` across all events in that run, and `Action.id` values MUST be unique within the run. Takopi does not require action IDs to remain stable across different runs/resumes.
+Stability requirements:
 
-Action kinds SHOULD be from a stable set (extensible):
+* Within a single run, the same underlying action MUST keep the same `Action.id` across events.
+* `Action.id` values MUST be unique within a run.
+* IDs do **not** need to be stable across different runs/resumes.
 
-- `command`
-- `tool`
-- `file_change`
-- `web_search`
-- `note`
-- `turn`
-- `warning`
-- `telemetry`
-- `note`
+Action kinds SHOULD come from an extensible stable set, e.g.:
 
-Runners MAY include additional kinds, but renderers MAY treat unknown kinds as `note`.
+* `command`, `tool`, `file_change`, `web_search`, `turn`, `warning`, `telemetry`, `note`
 
-The `detail` dict is **freeform per runner**; no per-kind schema is enforced. Renderers SHOULD handle missing or unexpected fields gracefully.
+Unknown kinds MAY be rendered as `note`.
 
-The `ok` field semantics are **runner-defined**. For example, a runner MAY treat `grep` exit code 1 (no match) as `ok=True` if contextually appropriate.
+`detail` is freeform; no per-kind schema is required.
 
-**User-visible warnings and errors:** runners SHOULD surface these as `action` events with `phase="completed"` (typically `kind="warning"` or `kind="note"`) and `ok=False`, rather than introducing additional event types.
+`ok` semantics are runner-defined.
 
-------
+User-visible warnings/errors SHOULD be surfaced as `action` events (typically `kind="warning"` or `kind="note"`, `phase="completed"`, `ok=False`) rather than introducing new event types.
 
-## 6. Runner interface and concurrency semantics
+## 5. Runner protocol and concurrency
 
-### 6.1 Runner protocol (MUST)
+### 5.1 Runner protocol (MUST)
 
 ```python
 class Runner(Protocol):
-    engine: str
+    engine: str  # EngineId
 
     def run(
         self,
@@ -282,288 +193,185 @@ class Runner(Protocol):
     ) -> AsyncIterator[TakopiEvent]: ...
 ```
 
-### 6.2 Per-thread serialization (MUST; core invariant)
+### 5.2 Per-thread serialization (MUST; core invariant)
 
-**Invariant:** At most one active run may operate on the same thread (same `ResumeToken`) at a time.
+Define:
 
-- Parallel runs are allowed only if they target **different** threads.
-- Runs targeting the same thread MUST be queued and executed sequentially.
-- This invariant MUST be enforced by the runner implementation (even if used outside the bridge).
+* `ThreadKey(resume) := f"{resume.engine}:{resume.value}"`
 
-**Critical requirement for new sessions:**
-If `resume is None`, the runner MUST acquire the per-thread lock **as soon as the new thread's ResumeToken becomes known**, and MUST do so **before emitting `started`** to downstream consumers.
+Invariant:
 
-This prevents:
+* At most **one** active run may operate on the same `ThreadKey` at a time.
 
-- a second run resuming the thread while the original "new session" run is still active
-- history corruption due to concurrent engine operations
+Rules:
 
-**Bridge note (non-normative):**
-The bridge may enforce FIFO scheduling per thread to avoid emitting multiple progress messages for the same thread while a run is already in-flight.
+* Runs for different ThreadKeys MAY run in parallel.
+* Runs for the same ThreadKey MUST be queued and executed sequentially.
+* This invariant MUST be enforced by the runner implementation even if used outside the Telegram bridge.
 
-**Codex note (non-normative):**
-Codex emits `thread.started` (with `thread_id`) before any `turn.*` / `item.*` events for both new and resumed runs. Codex MAY emit top-level warning `error` lines (e.g., config warnings) before `thread.started`; the Codex runner translates these warnings into `action` events with `phase="completed"` and yields them in the same order as received (so `started` is not guaranteed to be the first yielded event). If the subprocess exits before `thread.started` is observed, no `started` can be emitted and the bridge reports an error without a resume line.
+New thread rule (`resume is None`):
 
-Codex also emits exactly one `agent_message`/`assistant_message` per turn; the runner uses that message text as `completed.answer`.
+* When the runner learns the new thread’s ResumeToken, it MUST:
 
-**Claude Code note (non-normative):**
-Claude Code emits `system.init` (with `session_id`) before any `assistant`/`user` message objects; the runner should emit `started` on `system.init`. Claude’s final `result` message carries the session id and final answer (`result.result`), which the runner uses as `completed.answer`.
+  * acquire the per-thread lock for that token
+  * do so **before emitting** `started(resume=token)`
 
-### 6.3 Run completion event (MUST)
+### 5.3 `started` emission and ordering
 
-```python
-@dataclass(frozen=True, slots=True)
-class CompletedEvent:
-    type: Literal["completed"]
-    engine: EngineId
-    ok: bool                 # success/failure of the run
-    resume: ResumeToken | None = None  # final resume token for the run (new or existing, if known)
-    answer: str              # final assistant response text (may be empty)
-```
+* If the runner obtains a ResumeToken for the run, it MUST emit exactly one `started` event containing that token.
+* The runner MAY emit `action` events before `started` (e.g., pre-init warnings). Consumers MUST NOT assume `started` is the first event.
 
-`completed` MUST be the final event of a successful run.
+### 5.4 Completion
 
-### 6.4 Event delivery semantics (MUST)
+* If the run reaches `started`, and then terminates under the runner’s control (success or detected failure), the runner MUST emit exactly one `completed` event and it MUST be the last event.
+* If the runner never obtains a ResumeToken (e.g., fatal failure before session init), it MAY emit no `started` and no `completed`.
 
-Event ordering is significant. The system MUST ensure:
+### 5.5 Event delivery semantics (MUST)
 
-- Events are yielded to the consumer in the same order they are produced by the runner.
-- Event delivery MUST NOT spawn unbounded background tasks per event.
-- If the consumer stops iteration early (break/cancel/exception), the runner MUST abort the run (best-effort) and release any held resources.
+* Events MUST be yielded in the order produced by the runner.
+* The runner MUST NOT spawn unbounded background tasks per event.
+* If the consumer stops iterating early (cancel/break/exception), the runner MUST abort the run best-effort and release any held locks/resources.
 
-### 6.5 Crash and error handling
+## 6. Bridge (Telegram orchestration)
 
-If the runner subprocess crashes or exits uncleanly:
-
-- The bridge MUST publish an error status message.
-- If `started` was received, the bridge MUST include the resume line in the error message.
-
-------
-
-## 7. Bridge (Telegram orchestration)
-
-### 7.1 Responsibilities
+### 6.1 Responsibilities (MUST)
 
 The bridge MUST:
 
-- Poll Telegram updates.
-- Resolve resume token (from message text or reply target).
-- Start runner execution with appropriate cancellation support.
-- Maintain progress rendering and Telegram edits (rate-limited).
-- Publish final answer and include resume line.
-- Support `/cancel` to cancel the run associated with an in-flight progress message.
-
-**Queuing behavior:**
-
-- Multiple prompts to the same thread are queued and executed sequentially.
-- There is no queue depth limit; all prompts are accepted.
-
-### 7.1.1 Scheduling algorithm (MUST)
-
-The bridge MUST implement per-thread FIFO scheduling in a way that does not require spawning one task per queued job.
-
-**Definitions:**
-
-- `ThreadKey := f"{resume.engine}:{resume.value}"`
-- `Job := (chat_id, user_msg_id, text, resume: ResumeToken | None)`
-
-**Required behavior:**
-
-- For `resume != None`, the bridge MUST enqueue the job into `pending_by_thread[ThreadKey]` and ensure exactly one worker drains that queue sequentially.
-- If a run starts with `resume == None` but later emits `started(resume=token)`, the bridge MUST treat that run as the in-flight job for `ThreadKey(token)` for scheduling purposes until it completes.
-- A thread worker MUST exit when its queue is empty; the bridge SHOULD avoid retaining per-thread state for inactive threads.
+* Receive Telegram updates
+* Resolve resume token (per §3.4)
+* Schedule runs per thread (per §6.2)
+* Start runner execution with cancellation support
+* Maintain a progress message with rate-limited edits
+* Publish a final message containing status, answer, and resume line (when known)
+* Support `/cancel` for in-flight runs
 
 The bridge MUST NOT:
 
-- parse engine-native events
-- encode engine-specific rules beyond resume extraction via runner
+* parse engine-native streams/events
+* embed engine-specific rules beyond calling runner resume extraction/formatting
 
-### 7.2 Progress behavior
+Queue depth:
 
-- The bridge SHOULD send an initial progress message quickly (“running…”).
-- The bridge SHOULD edit the progress message no more frequently than every 2 seconds.
-- The bridge SHOULD avoid edits if rendered content has not changed.
+* There is no queue depth limit; all prompts are accepted.
 
-### 7.3 Resume line inclusion
+### 6.2 Scheduling (MUST)
 
-The progress renderer and/or final message MUST include the canonical resume line once known:
+Definitions:
 
-- If `started` has been received, the progress view SHOULD include the resume line.
-- The final message MUST include the resume line.
+* `Job := (chat_id, user_msg_id, text, resume: ResumeToken | None)`
 
-**Important:** because the resume line may appear during progress updates, the bridge MUST treat `started` as the point at which the thread key becomes known for scheduling and cancellation routing.
+Required behavior:
 
-### 7.4 Cancellation `/cancel`
+* For `resume != None`, the bridge MUST enqueue jobs into `pending_by_thread[ThreadKey(resume)]`.
+* For each ThreadKey, exactly one worker (or equivalent mechanism) MUST drain the queue sequentially.
+* A worker MUST exit when its queue is empty; the bridge SHOULD avoid retaining state for inactive threads.
+* The implementation MUST avoid spawning one long-lived task per queued job (bounded concurrency).
 
-- The bridge MUST allow the user to cancel a run in progress by sending `/cancel` in reply to the progress message (or by other defined mapping).
-- Cancel MUST terminate the runner process via **SIGTERM** and stop further progress edits.
-- After cancellation, the bridge MUST publish a "cancelled" status message and SHOULD include the resume line if known.
-- If `/cancel` is sent with additional text, the additional text is ignored; only cancellation occurs.
+Runs that start as new threads:
 
-### 7.5 Telegram markdown constraints
+* If a job starts with `resume=None` and later yields `started(resume=token)`, the bridge MUST treat that run as the in-flight job for `ThreadKey(token)` until it completes (for scheduling and cancellation routing).
+
+### 6.3 Progress message behavior
+
+* The bridge SHOULD send an initial progress message quickly (e.g., “Running…”).
+* The bridge SHOULD edit the progress message no more frequently than every **2 seconds**.
+* The bridge SHOULD skip edits when rendered content is unchanged.
+* Once `started` is observed, the progress view SHOULD include the canonical ResumeLine.
+
+### 6.4 Final message requirements (MUST)
+
+The final output MUST include:
+
+* a status line (`done` / `error` / `cancelled`)
+* the final `answer` (if any)
+* the ResumeLine if known (and MUST include it if `started` was received)
+
+### 6.5 Cancellation `/cancel` (MUST)
+
+* The bridge MUST allow users to cancel a run in progress by sending `/cancel` in reply to the progress message (or by an equivalent mapping defined by the bridge).
+* Cancellation MUST terminate the runner process via **SIGTERM**.
+* After cancellation, the bridge MUST stop further progress edits and publish a “cancelled” status message.
+* The bridge SHOULD include the ResumeLine if known.
+* Any additional text after `/cancel` is ignored.
+
+### 6.6 Telegram markdown + truncation (MUST)
 
 The bridge MUST:
 
-- escape/prepare markdown per Telegram rules
-- enforce Telegram message length limits (including after escaping)
-- avoid truncating away the resume line (use runner `is_resume_line()`)
+* escape/prepare Telegram markdown correctly
+* enforce Telegram message length limits (including after escaping)
+* avoid truncating away the ResumeLine (using `runner.is_resume_line()`)
 
 If truncation is required:
 
-- the bridge MUST keep the resume line intact
-- the bridge SHOULD preserve the **head** (beginning) of content and add an ellipsis marker before truncation point
+* the bridge MUST keep the ResumeLine intact
+* the bridge SHOULD preserve the beginning of the content and insert an ellipsis at the truncation point
 
-------
+### 6.7 Crash/error handling (MUST)
 
-## 8. Renderer (progress and final formatting)
+If the runner crashes or exits uncleanly:
 
-### 8.1 Renderer responsibilities
+* the bridge MUST publish an error status message
+* if `started` was received, the bridge MUST include the ResumeLine in that error message
+
+## 7. Renderer
 
 Renderers MUST:
 
-- be deterministic functions of Takopi events and internal state
-- produce markdown text and (optionally) entity annotations
+* be deterministic functions/state machines over Takopi events + internal renderer state
+* produce Telegram-ready markdown (or markdown + entities)
+* tolerate `action` events that are “completed-only” (no prior `started`/`updated`)
 
 Renderers MUST NOT:
 
-- depend on engine-native events
-- call Telegram APIs
-- perform blocking operations
+* depend on engine-native event formats
+* call Telegram APIs
+* perform blocking I/O
 
-### 8.2 Progress renderer state
+Action update collapsing:
 
-The progress renderer SHOULD maintain:
+* If multiple `action` events share the same `Action.id`, renderers SHOULD treat later `started`/`updated` events as updates (replace the prior running line rather than appending).
 
-- session title
-- current running actions and their latest summaries
-- completed actions and status
-- resume token if known
+## 8. Configuration and engine selection
 
-The progress renderer MUST tolerate “completed-only” actions (no prior
-`started` / `updated`) and treat them as standalone steps.
+Decision (v0.2.0):
 
-If the runner emits multiple `action` events for the same `Action.id` while it is still running (e.g., repeated `phase="started"` or `phase="updated"`), the progress renderer SHOULD treat these as updates and collapse them into a single line (replacing the prior running line rather than appending a new one).
+* Exactly one runner is selected at startup via a CLI subcommand (no default).
+* If no engine subcommand is provided, Takopi prints an engine chooser panel and exits.
+* Resume extraction uses only the selected runner.
+* If a user provides a resume line for a different engine, extraction fails and the bridge treats the message as a new thread (`resume=None`).
 
-### 8.3 Final rendering
+## 9. Testing requirements (MUST)
 
-Final output MUST include:
+Tests MUST cover:
 
-- status line (`done` / `error` / `cancelled`)
-- final `answer`
-- resume line
+1. **Runner contract**
 
-------
+   * If a token is obtained: exactly one `started`
+   * Action schema validity (required fields; stable unique IDs within run)
+   * Event ordering preserved
+   * `completed` emitted and last for controlled termination after `started`
+2. **Runner serialization**
 
-## 9. Configuration and engine selection
+   * Concurrent runs for the same ResumeToken serialize
+   * `resume=None` runs acquire the per-thread lock once token is known and before emitting `started`
+3. **Bridge per-thread scheduling**
 
-### 9.1 v0.2.0 behavior (Decision #5)
+   * FIFO per ThreadKey
+   * second job for same thread does not start until first completes
+4. **Progress throttling**
 
-- A single runner/engine is selected at startup via CLI subcommand (no default).
-- If no engine subcommand is provided, Takopi prints the engine chooser panel and exits.
-- Resume extraction uses only the selected runner’s parser.
-- If the user attempts to resume a thread created by a different engine, resume extraction will fail and the bot treats it as a new thread.
+   * edits not more frequent than configured interval
+   * no edit when content unchanged
+   * truncation preserves ResumeLine
+5. **Cancellation**
 
-### 9.2 Future behavior (non-normative)
+   * `/cancel` terminates run and produces “cancelled”
+   * ResumeLine included if known
+6. **Renderer formatting**
 
-Takopi MAY support:
+   * completed-only actions render correctly
+   * repeated events for same Action.id collapse as intended
 
-- trying all registered runners’ `extract_resume` to auto-select a runner for resumes
-- selecting a preferred engine from config when no resume is present
-
-The architecture SHOULD keep this future change localized to a `RunnerRegistry` / router.
-
-------
-
-## 10. Testing requirements (v0.2.0)
-
-### 10.1 Test categories (MUST)
-
-1. **Runner contract tests**
-   - Emits exactly one `started`
-   - All actions (if any) have required fields and stable IDs
-   - `completed.resume` matches started token (when present)
-   - Event ordering is preserved
-   - `ok` semantics match intended behavior
-2. **Runner serialization tests (critical)**
-   - Serializes concurrent runs for the same `ResumeToken`
-   - For `resume=None`, acquires per-thread lock once the token is known (before emitting `started`)
-3. **Bridge per-thread scheduling tests (critical)**
-   - Enqueue two prompts for the same `ResumeToken`
-   - Assert the bridge does not start the second run until the first completes
-4. **Bridge progress throttling tests**
-   - Edits no more frequently than configured interval
-   - No edits without changes
-   - Truncation preserves resume line
-5. **Cancellation tests**
-   - `/cancel` terminates run
-   - “cancelled” status produced
-   - resume line included if known
-6. **Renderer formatting tests**
-   - Correct rendering of actions
-   - Stable formatting under event sequences
-
-### 10.2 Test tooling guidelines (SHOULD)
-
-- Provide **event factories** in tests for readability.
-- Provide a deterministic fake clock/sleep.
-- Use a script/mock runner to simulate event sequences.
-
-------
-
-## 11. Open design notes / evolution hooks
-
-### 11.1 Takopi-owned resume tags (future discussion)
-
-Even though canonical is engine CLI command in v0.2.0, Takopi MAY later add a Takopi-owned unambiguous line such as:
-
-- `resume: codex:<uuid>`
-
-Benefits:
-
-- easier multi-runner routing
-- resilience to CLI syntax changes
-- simpler truncation and extraction
-
-This is not required for v0.2.0.
-
-### 11.2 EngineId typing
-
-To reduce friction adding new runners, v0.2.0 SHOULD treat engine IDs as strings (or a `NewType(str)`), not a closed Literal union.
-
-------
-
-## 12. Changelog template (for evolving this spec)
-
-- v0.2.0 [2025-12-31]
-  - Establish Takopi normalized event model and runner protocol
-  - Canonical resume representation is engine CLI command
-  - Enforce per-thread serialization including new sessions once token is known
-  - Telegram-only bridge with progress edits + cancellation
-  - Recommended module split into one-word modules
-  - Clarify: `ok` semantics are runner-defined, `detail` is freeform
-  - Clarify: bridge queues per thread (FIFO)
-  - Clarify: SIGTERM for cancellation, `/cancel` ignores accompanying text
-  - Clarify: truncation preserves head + resume line
-  - Clarify: crash publishes error with resume if known
-
-------
-
-## Appendix A: Example end-to-end flow (informative)
-
-1. User sends: “Refactor this module and run tests.”
-2. Bridge resolves resume token:
-   - none in message, none in reply → `resume=None`
-3. Bridge sends a progress message: “Running…”
-4. Runner starts and emits:
-   - `started(engine="codex", resume={engine:"codex", value:"<uuid>"})`
-   - `action(id="1", kind="command", title="pytest", detail={...}, phase="started")`
-   - `action(id="1", ok=True, phase="completed", ...)`
-   - `completed(resume=..., ok=True, answer="...")`
-5. Progress renderer now includes resume line:
-   - ``codex resume <uuid>``
-6. User replies to progress message with follow-up prompt.
-7. Bridge extracts resume via runner, chooses same thread, and queues it behind the in-flight run if still active.
-8. Final message includes:
-   - “done”
-   - final answer
-   - resume line ``codex resume <uuid>``
+Test tooling SHOULD include event factories, deterministic/fake time, and a script/mock runner.
