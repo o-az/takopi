@@ -53,8 +53,8 @@ def _parse_bridge_config(
 
     engine_cfg = get_engine_config(config, backend.id, config_path)
     startup_msg = (
-        f"\N{OCTOPUS} **takopi is ready**\n"
-        f"agent: {backend.id}\n"
+        f"\N{OCTOPUS} **takopi is ready**\n\n"
+        f"agent: {backend.id}  \n"
         f"working in: {startup_pwd}"
     )
 
