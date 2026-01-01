@@ -585,13 +585,8 @@ def build_runner(config: EngineConfig, _config_path: Path) -> Runner:
     )
 
 
-def startup_message(cwd: str) -> str:
-    return f"claude is ready\npwd: {cwd}"
-
-
 BACKEND = EngineBackend(
     id="claude",
     build_runner=build_runner,
-    startup_message=startup_message,
     install_cmd="npm install -g @anthropic-ai/claude-code",
 )

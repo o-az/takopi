@@ -19,6 +19,5 @@ class SetupIssue:
 class EngineBackend:
     id: str
     build_runner: Callable[[EngineConfig, Path], Runner]
-    startup_message: Callable[[str], str]
     cli_cmd: str | None = None
     install_cmd: str | None = None

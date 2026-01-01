@@ -205,7 +205,6 @@ Add a Claude runner without changing the Takopi domain model:
 2. Define `BACKEND` in `takopi/runners/claude.py`:
    - `install_cmd`: install command for the `claude` binary
    - `build_runner`: read `[claude]` config + construct runner
-   - `startup_message`: `"claude is ready\npwd: <cwd>"`
 3. Add new docs (this file + `claude-stream-json-cheatsheet.md`).
 4. Add fixtures in `tests/fixtures/` (see below).
 5. Add unit tests mirroring `tests/test_codex_*` but for Claude translation

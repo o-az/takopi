@@ -108,7 +108,6 @@ At the bottom of `src/takopi/runners/pi.py`, define:
 BACKEND = EngineBackend(
     id="pi",
     build_runner=build_runner,
-    startup_message=startup_message,
     install_cmd="npm install -g @acme/pi-cli",
 )
 ```

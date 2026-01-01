@@ -111,7 +111,6 @@ Takopi auto-discovers runners by importing `takopi.runners.*` and looking for
     * Agent SDK / CLI can use Claude Code authentication from running `claude`, or API key auth. ([Claude][5])
 
 * `build_runner()` should parse `[claude]` config and instantiate `ClaudeRunner`.
-* `startup_message()` e.g.: `claude is ready\npwd: ...`
 
 ### 2) New file: `src/takopi/runners/claude.py` (runner implementation)
 

@@ -632,13 +632,8 @@ def build_runner(config: EngineConfig, config_path: Path) -> Runner:
     return CodexRunner(codex_cmd=codex_cmd, extra_args=extra_args, title=title)
 
 
-def startup_message(cwd: str) -> str:
-    return f"codex is ready\npwd: {cwd}"
-
-
 BACKEND = EngineBackend(
     id="codex",
     build_runner=build_runner,
-    startup_message=startup_message,
     install_cmd="npm install -g @openai/codex",
 )
