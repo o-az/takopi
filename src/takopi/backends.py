@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from .runner import Runner
+if TYPE_CHECKING:
+    from .runner import Runner
 
 EngineConfig = dict[str, Any]
 

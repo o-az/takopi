@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Callable
 
 import anyio
 import typer
@@ -116,31 +117,32 @@ def app_main(
         raise typer.Exit(code=1)
 
 
-def _register_engine_commands() -> None:
+def make_engine_cmd(engine_id: str) -> Callable[..., None]:
+    def _cmd(
+        final_notify: bool = typer.Option(
+            True,
+            "--final-notify/--no-final-notify",
+            help="Send the final response as a new message (not an edit).",
+        ),
+        debug: bool = typer.Option(
+            False,
+            "--debug/--no-debug",
+            help="Log engine JSONL, Telegram requests, and rendered messages.",
+        ),
+    ) -> None:
+        _run_engine(engine=engine_id, final_notify=final_notify, debug=debug)
+
+    _cmd.__name__ = f"run_{engine_id}"
+    return _cmd
+
+
+def register_engine_commands() -> None:
     for backend in list_backends():
         help_text = f"Run with the {backend.id} engine."
-
-        def _cmd(
-            final_notify: bool = typer.Option(
-                True,
-                "--final-notify/--no-final-notify",
-                help="Send the final response as a new message (not an edit).",
-            ),
-            debug: bool = typer.Option(
-                False,
-                "--debug/--no-debug",
-                help="Log engine JSONL, Telegram requests, and rendered messages.",
-            ),
-            *,
-            _engine_id: str = backend.id,
-        ) -> None:
-            _run_engine(engine=_engine_id, final_notify=final_notify, debug=debug)
-
-        _cmd.__name__ = f"run_{backend.id}"
-        app.command(name=backend.id, help=help_text)(_cmd)
+        app.command(name=backend.id, help=help_text)(make_engine_cmd(backend.id))
 
 
-_register_engine_commands()
+register_engine_commands()
 
 
 def main() -> None:

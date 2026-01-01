@@ -94,7 +94,9 @@ Notes:
 
 ## Code changes (by file)
 
-### 1) `src/takopi/runners/claude.py` (backend export)
+### 1) New file: `src/takopi/runners/claude.py`
+
+#### Backend export
 
 Expose a module-level `BACKEND = EngineBackend(...)` (from `takopi.backends`).
 Takopi auto-discovers runners by importing `takopi.runners.*` and looking for
@@ -112,7 +114,7 @@ Takopi auto-discovers runners by importing `takopi.runners.*` and looking for
 
 * `build_runner()` should parse `[claude]` config and instantiate `ClaudeRunner`.
 
-### 2) New file: `src/takopi/runners/claude.py` (runner implementation)
+#### Runner implementation
 
 Implement a new `Runner`:
 
