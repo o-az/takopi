@@ -17,7 +17,7 @@ def test_check_setup_marks_missing_codex(monkeypatch, tmp_path: Path) -> None:
     result = onboarding.check_setup(backend)
 
     titles = {issue.title for issue in result.issues}
-    assert "Install the Codex CLI" in titles
+    assert "install the codex cli" in titles
     assert "Create a config" not in titles
     assert result.ok is False
 

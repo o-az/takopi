@@ -613,7 +613,7 @@ class ClaudeRunner(SessionLockMixin, ResumeTokenMixin, Runner):
 
 
 INSTALL_ISSUE = SetupIssue(
-    "Install the Claude Code CLI",
+    "install the claude code cli",
     ("   [dim]$[/] npm install -g @anthropic-ai/claude-code",),
 )
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 import subprocess
 from collections import deque
 from collections.abc import AsyncIterator
@@ -665,7 +664,7 @@ class CodexRunner(SessionLockMixin, ResumeTokenMixin, Runner):
 
 
 INSTALL_ISSUE = SetupIssue(
-    "Install the Codex CLI",
+    "install the codex cli",
     ("   [dim]$[/] npm install -g @openai/codex",),
 )
 
@@ -673,14 +672,7 @@ check_setup = which_issue("codex", INSTALL_ISSUE)
 
 
 def build_runner(config: EngineConfig, config_path: Path) -> Runner:
-    codex_cmd = shutil.which("codex")
-    if not codex_cmd:
-        raise ConfigError(
-            "codex not found on PATH. Install the Codex CLI with:\n"
-            "  npm install -g @openai/codex\n"
-            "  # or on macOS\n"
-            "  brew install codex"
-        )
+    codex_cmd = "codex"
 
     extra_args_value = config.get("extra_args")
     if extra_args_value is None:
