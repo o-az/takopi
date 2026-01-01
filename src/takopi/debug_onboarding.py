@@ -3,7 +3,6 @@ from __future__ import annotations
 import typer
 
 from .backends import SetupIssue
-from .backends_helpers import install_issue
 from .config import ConfigError
 from .engines import get_backend, list_backend_ids
 from .onboarding import SetupResult, check_setup, config_issue, render_setup_guide
@@ -40,8 +39,6 @@ def run(
     setup = check_setup(backend)
     if force:
         forced_issues = [config_issue(setup.config_path)]
-        cmd = backend.cli_cmd or backend.id
-        forced_issues.insert(0, install_issue(cmd, backend.install_cmd))
         setup = SetupResult(
             issues=_dedupe_issues([*setup.issues, *forced_issues]),
             config_path=setup.config_path,
