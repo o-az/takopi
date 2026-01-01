@@ -114,7 +114,7 @@ def app_main(
 
 def _register_engine_commands() -> None:
     for backend in list_backends():
-        help_text = backend.cli_help or f"Run with the {backend.display_name} engine."
+        help_text = f"Run with the {backend.id} engine."
 
         def _cmd(
             final_notify: bool = typer.Option(

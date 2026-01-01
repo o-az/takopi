@@ -664,12 +664,12 @@ class CodexRunner(SessionLockMixin, ResumeTokenMixin, Runner):
                 session_lock.release()
 
 
-_INSTALL_ISSUE = SetupIssue(
+INSTALL_ISSUE = SetupIssue(
     "Install the Codex CLI",
     ("   [dim]$[/] npm install -g @openai/codex",),
 )
 
-check_setup = which_issue("codex", _INSTALL_ISSUE)
+check_setup = which_issue("codex", INSTALL_ISSUE)
 
 
 def build_runner(config: EngineConfig, config_path: Path) -> Runner:
@@ -713,11 +713,7 @@ def startup_message(cwd: str) -> str:
 
 BACKEND = EngineBackend(
     id="codex",
-    display_name="Codex",
     check_setup=check_setup,
     build_runner=build_runner,
     startup_message=startup_message,
-    install_issue=_INSTALL_ISSUE,
-    cli_help="Run with the Codex engine.",
-    description="use codex",
 )

@@ -113,8 +113,7 @@ def render_engine_choice(backends: Sequence[EngineBackend]) -> None:
     parts.append("")
     for idx, backend in enumerate(backends, start=1):
         parts.append(f"[bold yellow]{idx}.[/] [dim]$[/] takopi {backend.id}")
-        description = backend.description or f"use {backend.display_name.lower()}"
-        parts.append(f"   [dim]{description}[/]")
+        parts.append(f"   [dim]use {backend.id}[/]")
         parts.append("")
 
     panel = Panel(

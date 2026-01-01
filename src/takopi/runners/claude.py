@@ -612,12 +612,12 @@ class ClaudeRunner(SessionLockMixin, ResumeTokenMixin, Runner):
                 session_lock.release()
 
 
-_INSTALL_ISSUE = SetupIssue(
+INSTALL_ISSUE = SetupIssue(
     "Install the Claude Code CLI",
     ("   [dim]$[/] npm install -g @anthropic-ai/claude-code",),
 )
 
-check_setup = which_issue("claude", _INSTALL_ISSUE)
+check_setup = which_issue("claude", INSTALL_ISSUE)
 
 
 def build_runner(config: EngineConfig, _config_path: Path) -> Runner:
@@ -645,11 +645,7 @@ def startup_message(cwd: str) -> str:
 
 BACKEND = EngineBackend(
     id="claude",
-    display_name="Claude",
     check_setup=check_setup,
     build_runner=build_runner,
     startup_message=startup_message,
-    install_issue=_INSTALL_ISSUE,
-    cli_help="Run with the Claude engine.",
-    description="use claude code",
 )

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+
 import typer
 
 from .backends import SetupIssue
@@ -17,6 +19,18 @@ def _dedupe_issues(issues: list[SetupIssue]) -> list[SetupIssue]:
         seen.add(issue)
         deduped.append(issue)
     return deduped
+
+
+def _install_issue(backend) -> SetupIssue | None:
+    module_name = backend.build_runner.__module__
+    try:
+        mod = importlib.import_module(module_name)
+    except Exception:
+        return None
+    issue = getattr(mod, "INSTALL_ISSUE", None)
+    if isinstance(issue, SetupIssue):
+        return issue
+    return None
 
 
 def run(
@@ -38,14 +52,10 @@ def run(
         raise typer.Exit(code=1)
     setup = check_setup(backend)
     if force:
-        install_issue = backend.install_issue or SetupIssue(
-            f"Install {backend.display_name}",
-            ("   [dim]See engine setup docs for install instructions.[/]",),
-        )
-        forced_issues = [
-            install_issue,
-            config_issue(setup.config_path),
-        ]
+        forced_issues = [config_issue(setup.config_path)]
+        install_issue = _install_issue(backend)
+        if install_issue is not None:
+            forced_issues.insert(0, install_issue)
         setup = SetupResult(
             issues=_dedupe_issues([*setup.issues, *forced_issues]),
             config_path=setup.config_path,

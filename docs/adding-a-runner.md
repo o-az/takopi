@@ -102,7 +102,6 @@ At the bottom of `src/takopi/runners/pi.py`, define:
 ```py
 BACKEND = EngineBackend(
     id="pi",
-    display_name="Pi",
     check_setup=check_setup,
     build_runner=build_runner,
     startup_message=startup_message,
