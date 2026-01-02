@@ -81,16 +81,16 @@ def _strip_engine_command(
 
 
 def _build_bot_commands(router: AutoRouter) -> list[dict[str, str]]:
-    commands: list[dict[str, str]] = [
-        {"command": "cancel", "description": "cancel run"}
-    ]
-    seen = {"cancel"}
+    commands: list[dict[str, str]] = []
+    seen: set[str] = set()
     for engine in router.engine_ids:
         cmd = engine.lower()
         if cmd in seen:
             continue
         commands.append({"command": cmd, "description": f"start {cmd}"})
         seen.add(cmd)
+    if "cancel" not in seen:
+        commands.append({"command": "cancel", "description": "cancel run"})
     return commands
 
 
